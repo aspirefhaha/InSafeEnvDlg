@@ -186,6 +186,23 @@ QModelIndex QOutEnvFSModel::index(int row, int column,
 
 }
 
+char* GBKToUTF8( const char* chGBK ){	
+	DWORD dWideBufSize=MultiByteToWideChar(CP_ACP, 0,(LPCSTR)chGBK,-1, NULL, 0);  	
+	wchar_t * pWideBuf=new wchar_t[dWideBufSize];  	
+	wmemset(pWideBuf, 0, dWideBufSize);  	
+	MultiByteToWideChar(CP_ACP,0,(LPCSTR)chGBK,-1,pWideBuf,dWideBufSize); 	
+	DWORD dUTF8BufSize=WideCharToMultiByte(CP_UTF8,0,(LPCWSTR)pWideBuf,-1,NULL,0,NULL,NULL);  	
+	char * pUTF8Buf=new char[dUTF8BufSize];  	
+	memset(pUTF8Buf, 0, dUTF8BufSize);  	
+	DWORD chgSize = WideCharToMultiByte( CP_UTF8,0,(LPCWSTR)pWideBuf,-1,pUTF8Buf,dUTF8BufSize,NULL,NULL); 	
+	char tmpstr[256];
+	sprintf(tmpstr,"widechartomb ret %d\n",chgSize);
+	OutputDebugString(tmpstr);
+	delete[]pWideBuf;	
+	return pUTF8Buf;
+}
+
+
 QVariant QOutEnvFSModel::headerData(int section, Qt::Orientation orientation, int role ) const
 {
 	switch (role) {
@@ -292,20 +309,41 @@ QVariant QOutEnvFSModel::data(const QModelIndex & index,
 				int len = 0;
 				strcpy(lpPath,fspath.toStdString().c_str());
 				WIN32_FILE_ATTRIBUTE_DATA wfad;
+				char * pos = strrchr(lpPath,'\\');
+#define TRANSUTF8 0
+				char * pUtf8 = lpPath;
+				if(pos != NULL){
+
+#if TRANSUTF8
+					pUtf8 = GBKToUTF8(pos+1);
+#else
+					pUtf8=pos+1;
+#endif
+				}
+				else{
+#if TRANSUTF8
+					pUtf8 = GBKToUTF8(lpPath);
+#endif
+				}
+				filename =  QString::fromLocal8Bit(pUtf8);
+#if TRANSUTF8
+				delete[] pUtf8;
+#endif
 				BOOL tmpRet = pFunc->GetFileAttributesEx((char*)lpPath,GetFileExInfoStandard,&wfad);
 				if(tmpRet){
-					char * pos = strrchr(lpPath,'\\');
-					if(pos != NULL){
-						filename = pos+1;
-					}
-					else
-						filename = lpPath;
+					
 					if(wfad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY){
 						filetype = "File Folder";
 						
+						//filename = "中文";
 					}
 					else{
+						//filename = GBKToUTF8("中文");
 						filetype = "File";
+						//
+						//pUtf8 = GBKToUTF8(pos+1);
+						//delete[] pUtf8 ;
+
 						//long long tH = pFunc->CreateFile((char *)lpPath,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_RANDOM_ACCESS,NULL);
 						//if(tH != -1 && tH != 0){
 						//	BY_HANDLE_FILE_INFORMATION bhfi;
@@ -324,6 +362,12 @@ QVariant QOutEnvFSModel::data(const QModelIndex & index,
 						.arg(sysTime.wHour,2,10,QLatin1Char('0'))
 						.arg(sysTime.wMinute,2,10,QLatin1Char('0'))
 						.arg(sysTime.wSecond,2,10,QLatin1Char('0'));
+				}
+				else{
+					//char tmpretstr[256]={0};
+					//sprintf(tmpretstr,"GetFileAttributes ret %d %s\n",tmpRet,lpPath);
+					//OutputDebugString(tmpretstr);
+					
 				}
 				
 
