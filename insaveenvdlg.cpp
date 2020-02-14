@@ -1,6 +1,5 @@
 
 #include "insaveenvdlg.h"
-#include "inenvdirplugin.h"
 
 InSaveEnvDlg::InSaveEnvDlg(QWidget *parent, Qt::WFlags flags)
 	: QDialog(parent, flags),OutModel(this)
@@ -121,7 +120,8 @@ void InSaveEnvDlg::CopyToInEnv()
 		temp = *cit;
 		OutEnvFSPrivate * pPriv = static_cast<OutEnvFSPrivate *>(temp.internalPointer());
 		//strSelect += ui.tv_InEnv->model()->itemData(temp).values()[0].toString();
-		InEnvCopyFileFromOutEnv(pPriv->absPath,tarDir);
+		//TODO
+		//InEnvCopyFileFromOutEnv(pPriv->absPath,tarDir);
 	}
 }
 

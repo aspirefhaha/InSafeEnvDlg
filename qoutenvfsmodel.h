@@ -2,11 +2,15 @@
 #define QOUTENVFSMODEL_H
 
 #include <QAbstractItemModel>
-
-#include "inenvdirplugin.h"
-
 #include <Windows.h>
 #include "FhahaLib.h"
+enum OUTFSTYPE {
+	OUTFTDRIVE=1,
+	OUTFTSPEC,
+	OUTFTDIR,
+	OUTFTFILE,
+	OUTFTUNKNOWN
+};
 
 struct OutEnvFSPrivate 
 {

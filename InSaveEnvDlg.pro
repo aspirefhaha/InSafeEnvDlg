@@ -8,11 +8,10 @@ QMAKE_LFLAGS *= /MACHINE:X64
 DEFINES += "_MBCS"
 DEPENDPATH += . GeneratedFiles
 INCLUDEPATH += . \
-		../InEnvDirPlugin \
 		D:/VBox/VirtualBox-5.0.0/src/VBox/Additions/WINNT/FhahaLib
 
-LIBS += -L../InEnvDirPlugin/debug \
-		InEnvDirPlugin.lib
+#LIBS += -L../InEnvDirPlugin/debug \
+#		InEnvDirPlugin.lib
 
 !contains(QMAKE_TARGET.arch, x86_64) {
     message("x86_64 build")
