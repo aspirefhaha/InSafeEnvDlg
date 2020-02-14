@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/InSaveEnvDlg"/>
+    <qresource prefix="/qm">
+        <file>zh_CN.qm</file>
+    </qresource>
+</RCC>

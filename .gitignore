@@ -1,0 +1,8 @@
+Makefile*
+Release
+Debug
+*.qm
+*.pdb
+*.aps
+*.filters
+*.user
