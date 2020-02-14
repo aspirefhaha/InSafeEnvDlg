@@ -111,12 +111,16 @@ QModelIndex QOutEnvFSModel::index(int row, int column,
 					strcpy(lpPath,parentItemPtr->absPath.toStdString().c_str());
 					len = strlen(lpPath);
 					if(lpPath[len-1]!='\\'){
-						lpPath[len-1]='\\';
-						lpPath[len]=0;
+						lpPath[len]='\\';
+						lpPath[len+1]=0;
+					}
+					BOOL tmpRet = pFunc->SetCurrentDirectory((LPCTSTR)lpPath);
+					if(!tmpRet){
+						return QModelIndex();
 					}
 					WIN32_FIND_DATA fd;
-					long long hFindFile = pFunc->FindFirstFile((LPCTSTR)lpPath,&fd);
-					if(hFindFile == -1){
+					long long hFindFile = pFunc->FindFirstFile("*",&fd);
+					if(hFindFile == -1 || hFindFile == 0){
 						pFunc->CloseHandle(hFindFile);
 						return QModelIndex();
 					}
@@ -287,26 +291,33 @@ QVariant QOutEnvFSModel::data(const QModelIndex & index,
 				char lpPath[MAX_PATH] = {0};
 				int len = 0;
 				strcpy(lpPath,fspath.toStdString().c_str());
-				len = strlen(lpPath);
-				if(lpPath[len-1]!='\\'){
-					lpPath[len-1]='\\';
-					lpPath[len]=0;
-				}
-				long long tH = pFunc->CreateFile((char *)lpPath,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_RANDOM_ACCESS,NULL);
-				if(tH != -1){
-					BY_HANDLE_FILE_INFORMATION bhfi;
-					pFunc->GetFileInformationByHandle(tH,&bhfi);
+				WIN32_FILE_ATTRIBUTE_DATA wfad;
+				BOOL tmpRet = pFunc->GetFileAttributesEx((char*)lpPath,GetFileExInfoStandard,&wfad);
+				if(tmpRet){
 					char * pos = strrchr(lpPath,'\\');
 					if(pos != NULL){
 						filename = pos+1;
 					}
 					else
 						filename = lpPath;
-					filesize = QString::number(bhfi.nFileSizeHigh * 2ll^32  + bhfi.nFileSizeLow);
-					filetype = (bhfi.dwFileAttributes | FILE_ATTRIBUTE_DIRECTORY)?"File Folder":"File";
-					
+					if(wfad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY){
+						filetype = "File Folder";
+						
+					}
+					else{
+						filetype = "File";
+						//long long tH = pFunc->CreateFile((char *)lpPath,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_RANDOM_ACCESS,NULL);
+						//if(tH != -1 && tH != 0){
+						//	BY_HANDLE_FILE_INFORMATION bhfi;
+						//	pFunc->GetFileInformationByHandle(tH,&bhfi);
+						//
+						//	filesize = QString::number(bhfi.nFileSizeHigh * 2ll^32  + bhfi.nFileSizeLow);	
+						//}
+
+					}
+					filesize = QString::number(wfad.nFileSizeHigh * 2ll^32  + wfad.nFileSizeLow);
 					SYSTEMTIME sysTime;
-					FileTimeToSystemTime(&bhfi.ftLastWriteTime,&sysTime);
+					FileTimeToSystemTime(&wfad.ftLastWriteTime,&sysTime);
 					filelastmodifytime = QString("%1-%2-%3 %4::%5::%6").arg(sysTime.wYear,4,10,QLatin1Char('0'))
 						.arg(sysTime.wMonth,2,10,QLatin1Char('0'))
 						.arg(sysTime.wDay,2,10,QLatin1Char('0'))
@@ -314,6 +325,7 @@ QVariant QOutEnvFSModel::data(const QModelIndex & index,
 						.arg(sysTime.wMinute,2,10,QLatin1Char('0'))
 						.arg(sysTime.wSecond,2,10,QLatin1Char('0'));
 				}
+				
 
 #else
 				QFileInfo info(fspath);
@@ -355,9 +367,10 @@ QVariant QOutEnvFSModel::data(const QModelIndex & index,
 				strcpy(lpPath,fspath.toStdString().c_str());
 				len = strlen(lpPath);
 				if(lpPath[len-1]!='\\'){
-					lpPath[len-1]='\\';
-					lpPath[len]=0;
+					lpPath[len]='\\';
+					lpPath[len+1]=0;
 				}
+				filename = lpPath;
 				DWORD64 qwFreeBytesToCaller, qwTotalBytes, qwFreeBytes;
 				DWORD dwSectPerClust, dwBytesPerSect, dwFreeClusters, dwTotalClusters;
 				BOOL bResult;
@@ -445,7 +458,7 @@ void QOutEnvFSModel::refreshRootDevice()
 	if(pFunc){
 		int icount = 0;
 		DWORD outDVs = pFunc->GetLogicalDrives();
-		TCHAR tmpDv[4] = {'A',':','\\',0};
+		TCHAR tmpDv[3] = {'A',':',0};
 		while(outDVs != 0l){
 			if(outDVs & 1 != 0){
 				tmpDv[0] = 'A' + icount;
@@ -507,12 +520,16 @@ int QOutEnvFSModel::rowCount(const QModelIndex &parent ) const
 				strcpy(lpPath,parentData->absPath.toStdString().c_str());
 				len = strlen(lpPath);
 				if(lpPath[len-1]!='\\'){
-					lpPath[len-1]='\\';
-					lpPath[len]=0;
+					lpPath[len]='\\';
+					lpPath[len+1]=0;
+				}
+				BOOL tmpRet  = pFunc->SetCurrentDirectory((LPCTSTR)lpPath);
+				if(!tmpRet){
+					return 0;
 				}
 				WIN32_FIND_DATA fd;
-				long long hFindFile = pFunc->FindFirstFile((LPCTSTR)lpPath,&fd);
-				if(hFindFile == -1){
+				long long hFindFile = pFunc->FindFirstFile("*",&fd);
+				if(hFindFile == -1 || hFindFile == 0){
 					pFunc->CloseHandle(hFindFile);
 					listsize = 0;
 				}
