@@ -9,7 +9,7 @@ DEFINES += "_MBCS"
 DEPENDPATH += . GeneratedFiles
 INCLUDEPATH += . \
 		../InEnvDirPlugin \
-		D:\VBox\VirtualBox-5.0.0\src\VBox\Additions\WINNT\FhahaLib
+		D:/VBox/VirtualBox-5.0.0/src/VBox/Additions/WINNT/FhahaLib
 
 LIBS += -L../InEnvDirPlugin/debug \
 		InEnvDirPlugin.lib

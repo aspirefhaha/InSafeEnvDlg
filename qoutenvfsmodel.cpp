@@ -115,8 +115,8 @@ QModelIndex QOutEnvFSModel::index(int row, int column,
 						lpPath[len]=0;
 					}
 					WIN32_FIND_DATA fd;
-					HANDLE hFindFile = pFunc->FindFirstFile((LPCTSTR)lpPath,&fd);
-					if(hFindFile == INVALID_HANDLE_VALUE){
+					long long hFindFile = pFunc->FindFirstFile((LPCTSTR)lpPath,&fd);
+					if(hFindFile == -1){
 						pFunc->CloseHandle(hFindFile);
 						return QModelIndex();
 					}
@@ -292,8 +292,8 @@ QVariant QOutEnvFSModel::data(const QModelIndex & index,
 					lpPath[len-1]='\\';
 					lpPath[len]=0;
 				}
-				HANDLE tH = pFunc->CreateFile((char *)lpPath,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_RANDOM_ACCESS,NULL);
-				if(tH != INVALID_HANDLE_VALUE){
+				long long tH = pFunc->CreateFile((char *)lpPath,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_RANDOM_ACCESS,NULL);
+				if(tH != -1){
 					BY_HANDLE_FILE_INFORMATION bhfi;
 					pFunc->GetFileInformationByHandle(tH,&bhfi);
 					char * pos = strrchr(lpPath,'\\');
@@ -511,8 +511,8 @@ int QOutEnvFSModel::rowCount(const QModelIndex &parent ) const
 					lpPath[len]=0;
 				}
 				WIN32_FIND_DATA fd;
-				HANDLE hFindFile = pFunc->FindFirstFile((LPCTSTR)lpPath,&fd);
-				if(hFindFile == INVALID_HANDLE_VALUE){
+				long long hFindFile = pFunc->FindFirstFile((LPCTSTR)lpPath,&fd);
+				if(hFindFile == -1){
 					pFunc->CloseHandle(hFindFile);
 					listsize = 0;
 				}
