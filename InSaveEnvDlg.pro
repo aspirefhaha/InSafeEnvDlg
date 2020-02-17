@@ -14,17 +14,16 @@ INCLUDEPATH += . \
 #		InEnvDirPlugin.lib
 
 !contains(QMAKE_TARGET.arch, x86_64) {
-    message("x86_64 build")
+    message("x64 build")
     ## Windows x64 (64bit) specific build here       
 } else {
     message("x86 build")
     ## Windows x86 (32bit) specific build here
 }
 # Input
-HEADERS += CFriendViewModel.h HistoryModel.h insaveenvdlg.h qoutenvfsmodel.h
+HEADERS += FProgWaitDlg.h insaveenvdlg.h qoutenvfsmodel.h
 FORMS += insaveenvdlg.ui
-SOURCES += CFriendViewModel.cpp \
-           HistoryModel.cpp \
+SOURCES += FProgWaitDlg.cpp \
            insaveenvdlg.cpp \
            main.cpp \
            qoutenvfsmodel.cpp

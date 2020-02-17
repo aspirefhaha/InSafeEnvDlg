@@ -5,7 +5,10 @@ InSaveEnvDlg::InSaveEnvDlg(QWidget *parent, Qt::WFlags flags)
 	: QDialog(parent, flags),OutModel(this)
 {
 	ui.setupUi(this);
-	
+	m_pBgWorkThread = new BgWorkThread(this);
+	connect(m_pBgWorkThread,SIGNAL(calcSizeRes(unsigned int)),this,SLOT(showCalcSize(unsigned int)));
+	connect(m_pBgWorkThread,SIGNAL(updateSize(unsigned int)),this,SLOT(updateMsg(unsigned int)));
+	connect(m_pBgWorkThread,SIGNAL(calcItemCount(int)),this,SLOT(updateItemCount(int)));
 	//OutModel.setRootPath("");
 
 	//ui.tv_OutEnv->setRootIndex(OutModel.index("C:\\hadoop-2.7.7"));
@@ -52,6 +55,7 @@ InSaveEnvDlg::InSaveEnvDlg(QWidget *parent, Qt::WFlags flags)
     ui.tv_InEnv->setIndentation(20);
     ui.tv_InEnv->setSortingEnabled(true);
 	//ui.tv_InEnv->setUniformRowHeights(true);
+	//connect(this,SIGNAL(calcSize(QList<QString>)),&OutModel,SLOT(calcSize_slot(QList<QString>)));
 }
 
 InSaveEnvDlg::~InSaveEnvDlg()
@@ -59,13 +63,70 @@ InSaveEnvDlg::~InSaveEnvDlg()
 
 }
 
+void InSaveEnvDlg::updateItemCount(int totalcount)
+{
+	m_tpDlg->setCountIndex(0,totalcount);
+	m_selTotalCount = totalcount;
+	//ui.lb_OutSelected->setText(calcShowSize(totalsize));
+}
+
+void InSaveEnvDlg::showCalcSize(unsigned int totalsize)
+{
+	m_tpDlg->close();
+	m_selOutTotalSize = totalsize;
+	ui.lb_OutSelected->setText(calcShowSize(totalsize));
+}
+
+void InSaveEnvDlg::updateMsg(unsigned int size)
+{
+	m_tpDlg->updateText(calcShowSize(size));
+}
+
+QString InSaveEnvDlg::calcShowSize(DWORD showsize)
+{
+	long long actSize = showsize;
+	actSize *= QOutEnvFSModel::ONCEBLOCK;
+	if(actSize >= 1024*1024 * 1024 *0.7)
+		return QString::number(actSize/1024.0/1024/1024) + "GB";
+	else if(actSize >= 1024*1024*0.7)
+		return QString::number(actSize/1024.0/1024 ) + "MB";
+	else if(actSize >= 1024*0.7)
+		return QString::number(actSize/1024.0 ) + "kB";
+	return QString::number(actSize ) + "B";
+}
 
 void InSaveEnvDlg::OutEnvSelected(QModelIndex selIndex)
 {
 	//ui.lb_OutSelected->setWindowTitle("haha");
-	QString fhahaStr= QString("column %1 row %2 of parent %3").arg(selIndex.column()).arg(selIndex.row()).arg(selIndex.parent().row());
+	//QString fhahaStr= QString("column %1 row %2 of parent %3").arg(selIndex.column()).arg(selIndex.row()).arg(selIndex.parent().row());
 	//QString dirStr = QString("%1").arg(OutModel.filePath(selIndex));
-	ui.lb_OutSelected->setText(fhahaStr);
+	
+	QModelIndexList selected = ui.tv_OutEnv->selectionModel()->selectedRows(0);
+
+	QList<QModelIndex>::const_iterator cit;
+	QModelIndex temp;
+	QString strSelect;
+	DWORD selectSize = 0; 
+	QList<QString> selpath;
+	for (cit = selected.begin(); cit != selected.end(); ++cit)
+	{
+		temp = *cit;
+		//strSelect += ui.tv_InEnv->model()->itemData(temp).values()[0].toString();
+		OutEnvFSPrivate * pSelItemPrivate = static_cast<OutEnvFSPrivate *>(temp.internalPointer());
+		QString subItemPath = pSelItemPrivate->absPath;
+		if(pSelItemPrivate->fstype == OUTFTDRIVE)
+			continue;
+		//strSelect += QString::fromLocal8Bit(subItemPath.toStdString().c_str());
+		//selectSize += OutModel.getFileDirSize(subItemPath.toStdString().c_str());
+		//strSelect += " " ;
+		selpath.append(subItemPath);
+	}
+	//ui.lb_OutSelected->setText(calcShowSize(selectSize) + " " + strSelect);
+	m_pBgWorkThread->setSelPath(selpath);
+	m_pBgWorkThread->start();
+	m_tpDlg = new FProgWaitDlg(NULL,FDT_WAIT);
+	//m_tpDlg->setModal(true);
+	m_tpDlg->exec();
 }
 
 void InSaveEnvDlg::InEnvSelected(QModelIndex selIndex)
@@ -114,15 +175,21 @@ void InSaveEnvDlg::CopyToInEnv()
 		return;
 	}
 	QList<QModelIndex>::iterator cit = outselected.begin();
-
+	QList<QString> selOutPaths ;
 	for (; cit != outselected.end(); ++cit)
 	{
 		temp = *cit;
 		OutEnvFSPrivate * pPriv = static_cast<OutEnvFSPrivate *>(temp.internalPointer());
+		selOutPaths.append(pPriv->absPath);
 		//strSelect += ui.tv_InEnv->model()->itemData(temp).values()[0].toString();
 		//TODO
 		//InEnvCopyFileFromOutEnv(pPriv->absPath,tarDir);
 	}
+	m_pBgWorkThread->setSelPath(selOutPaths);
+	m_pBgWorkThread->setInnerTargetDir(tarDir);
+	m_pBgWorkThread->setWorkMode(WMCOPYTOINNER);
+	m_pBgWorkThread->start();
+	m_tpDlg->exec();
 }
 
 void InSaveEnvDlg::CopyToOutEnv()

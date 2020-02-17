@@ -12,25 +12,39 @@
 
 #include <Windows.h>
 typedef FhahaLib_Func * (*PFhahaLibGetProcStruct)();
+
+HINSTANCE QOutEnvFSModel::LibHandle = NULL;
+
+FhahaLib_Func * QOutEnvFSModel::pFunc = NULL;
+
 QOutEnvFSModel::QOutEnvFSModel(QObject *parent)
 	: QAbstractItemModel(parent)
 {
 	LibHandle = NULL;
 	PFhahaLibGetProcStruct ProcAdd;
-	LibHandle = LoadLibraryA("FhahaLib.dll");
-	qDebug() << "user32 LibHandle = " << LibHandle;
-	if(LibHandle){
-		ProcAdd=(PFhahaLibGetProcStruct)GetProcAddress(LibHandle,"FhahaLibGetProcStruct");    
-		qDebug() << "Get Func Address" <<  ProcAdd;
-		if(ProcAdd!=NULL){
+	if(LibHandle == NULL){
+		LibHandle = LoadLibraryA("FhahaLib.dll");
+		qDebug() << "user32 LibHandle = " << LibHandle;
+		if(LibHandle){
+			ProcAdd=(PFhahaLibGetProcStruct)GetProcAddress(LibHandle,"FhahaLibGetProcStruct");    
+			qDebug() << "Get Func Address" <<  ProcAdd;
+			if(ProcAdd!=NULL){
 			
-			pFunc = ProcAdd();
-			qDebug() << "Get Pointer Address "<< pFunc;
-		}
-		else{
+				pFunc = ProcAdd();
+				qDebug() << "Get Pointer Address "<< pFunc;
+			}
+			else{
 			
+			}
+		
 		}
 	}
+	
+}
+
+void QOutEnvFSModel::calcSize_slot(QList<QString> selPaths)
+{
+
 }
 
 QOutEnvFSModel::~QOutEnvFSModel()
@@ -38,6 +52,7 @@ QOutEnvFSModel::~QOutEnvFSModel()
 	if(LibHandle!=NULL){
 		FreeLibrary(LibHandle);
 		LibHandle = NULL;
+		pFunc = NULL;
 	}
 	qDeleteAll(m_allItems);
 }
@@ -51,6 +66,245 @@ OutEnvFSPrivate * QOutEnvFSModel::findOutFSChild(QString abspath,OUTFSTYPE type)
 		pitem++;
 	}
 	return NULL;
+}
+
+void BgWorkThread::run()
+{
+	if(QOutEnvFSModel::pFunc == NULL){
+		return;
+	}
+	switch(m_bgworkmode){
+	case WMCALCSIZE:
+		{
+			DWORD totalsize = 0;
+			QList<QString>::iterator iter = m_selPaths.begin();
+			for(;iter!=m_selPaths.end() && !m_bIsQuit;iter++){
+				totalsize += getFileDirSize((*iter).toStdString().c_str());
+		
+			}
+			emit calcSizeRes(totalsize);
+		}
+		break;
+	
+	case WMCOPYTOINNER:
+		{
+			int totalcount = 0;
+			QList<QString>::Iterator iter = m_selPaths.begin();
+			for(;iter!=m_selPaths.end() && !m_bIsQuit;iter++){
+				totalcount += getSubItemCount((*iter).toStdString().c_str());
+			}
+			emit calcItemCount(totalcount);
+			
+			CopyFilesToInner(m_selPaths,m_innertarget);
+		}
+		break;
+	case WMCOPYTOOUTER:
+		{
+
+		}
+		break;
+	}
+}
+
+void  BgWorkThread::CopyFileToInner(const char * outdir,const char * filename,const char * indir)
+{
+	char tmpdata[QOutEnvFSModel::ONCEBLOCK];
+	char sourcefilename[MAX_PATH]={0};
+	DWORD readCount = 0;
+	sprintf(sourcefilename,"%s\\%s",outdir,filename);
+	QFile file;
+	QString targetfilename = QString("%1\\%2").arg(QString::fromLocal8Bit(indir)).arg(QString::fromLocal8Bit(filename));
+    //关联文件名字
+    file.setFileName(targetfilename);
+
+    //打开文件，只写方式
+    bool isOk = file.open(QIODevice::WriteOnly);
+	if(!isOk)
+		return;
+	HANDLE inh = (HANDLE)QOutEnvFSModel::pFunc->CreateFile((char *)sourcefilename,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_RANDOM_ACCESS,NULL);
+	if(inh != (HANDLE)(-1) && inh != (HANDLE)0){
+		BOOL tRet = TRUE;
+		do{
+			tRet = QOutEnvFSModel::pFunc->ReadFile((long long)inh,tmpdata,QOutEnvFSModel::ONCEBLOCK,&readCount,NULL);
+			if(tRet && readCount!=0){
+				if(file.write(tmpdata,readCount)!=readCount){
+					tRet = FALSE;
+				}
+			}
+		}while(tRet && readCount!=0);
+	}
+	file.close();
+	QOutEnvFSModel::pFunc->CloseHandle((long long)inh);
+}
+
+int BgWorkThread::CopyFilesToInner(QList<QString> selOutPaths,QString intargetdir)
+{
+	QList<QString>::Iterator iter = m_selPaths.begin();
+	for(;iter!=m_selPaths.end() && !m_bIsQuit;iter++){
+		char outdirname[MAX_PATH];
+		char outRootDir[MAX_PATH]={0};
+		strcpy(outdirname,(*iter).toStdString().c_str());
+		strcpy(outRootDir,outdirname);
+		char * pUpSlash = strrchr(outRootDir,'\\');
+		char * filename = pUpSlash + 1;
+		*pUpSlash=0;
+		WIN32_FILE_ATTRIBUTE_DATA wfad;
+		if(strlen(outdirname)>=MAX_PATH)
+			return 0;
+		BOOL tRet = QOutEnvFSModel::pFunc->GetFileAttributesEx(outdirname,GetFileExInfoStandard,&wfad);
+		if(!tRet){
+			return 0;
+		}
+		if(wfad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY){ // is a dir
+
+		}
+		else{ // is a file 
+			CopyFileToInner(outRootDir,filename,intargetdir.toStdString().c_str());
+
+		}
+
+		//totalcount += getSubItemCount();
+	}
+	return 0;
+}
+
+BgWorkThread::BgWorkThread(QObject * parent):QThread(parent),m_bIsQuit(false),m_bgworkmode(WMCALCSIZE)
+{
+
+}
+
+BgWorkThread::~BgWorkThread()
+{
+
+}
+
+
+DWORD BgWorkThread::getSubItemCount(const char * abspath)
+{
+	DWORD totalcount = 0;
+	WIN32_FILE_ATTRIBUTE_DATA wfad;
+	if(strlen(abspath)>=MAX_PATH)
+		return 0;
+	BOOL tRet = QOutEnvFSModel::pFunc->GetFileAttributesEx(abspath,GetFileExInfoStandard,&wfad);
+	if(!tRet){
+		return 0;
+	}
+	if(wfad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY){
+		char tmppath[MAX_PATH];
+		strcpy_s(tmppath,MAX_PATH,abspath);
+		int len = strlen(tmppath);
+		if(tmppath[len-1]!='\\')
+		{
+			tmppath[len]='\\';
+			tmppath[len+1]='*';
+			tmppath[len+2] = 0;
+		}
+		else{
+			tmppath[len]='*';
+			tmppath[len+1]=0;
+		}
+		WIN32_FIND_DATA fd;
+		long long hFindFile = QOutEnvFSModel::pFunc->FindFirstFile(tmppath,&fd);
+		if(hFindFile == -1 || hFindFile == 0){
+			QOutEnvFSModel::pFunc->CloseHandle(hFindFile);
+			return totalcount;
+		}
+		else{
+			bool isFinished = false;
+			BOOL bIsDirectory = FALSE;
+			int idx = 0;
+			while(!isFinished){  
+				bIsDirectory = ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0);  
+              
+				//如果是.或..  
+				if( bIsDirectory  
+					&& (strcmp(fd.cFileName, ".")==0 || strcmp(fd.cFileName, "..")==0))   
+				{         
+					isFinished = (QOutEnvFSModel::pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
+					continue;  
+				} 
+				char subAbsPath[MAX_PATH];
+				sprintf(subAbsPath,"%s\\%s",abspath,fd.cFileName);
+				totalcount += getSubItemCount(subAbsPath);
+				totalcount ++;
+				emit updateSize(totalcount);
+				isFinished = (QOutEnvFSModel::pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
+			}  
+          
+			QOutEnvFSModel::pFunc->FindClose(hFindFile);  
+		}
+	}
+	else {
+		totalcount = 1 ;
+	}
+
+	return totalcount;
+}
+
+
+DWORD BgWorkThread::getFileDirSize(const char * abspath)
+{
+	DWORD totalsize = 0;
+	WIN32_FILE_ATTRIBUTE_DATA wfad;
+	if(strlen(abspath)>=MAX_PATH)
+		return 0;
+	BOOL tRet = QOutEnvFSModel::pFunc->GetFileAttributesEx(abspath,GetFileExInfoStandard,&wfad);
+	if(!tRet){
+		return 0;
+	}
+	if(wfad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY){
+		char tmppath[MAX_PATH];
+		strcpy_s(tmppath,MAX_PATH,abspath);
+		int len = strlen(tmppath);
+		if(tmppath[len-1]!='\\')
+		{
+			tmppath[len]='\\';
+			tmppath[len+1]='*';
+			tmppath[len+2] = 0;
+		}
+		else{
+			tmppath[len]='*';
+			tmppath[len+1]=0;
+		}
+		WIN32_FIND_DATA fd;
+		long long hFindFile = QOutEnvFSModel::pFunc->FindFirstFile(tmppath,&fd);
+		if(hFindFile == -1 || hFindFile == 0){
+			QOutEnvFSModel::pFunc->CloseHandle(hFindFile);
+			return totalsize;
+		}
+		else{
+			bool isFinished = false;
+			BOOL bIsDirectory = FALSE;
+			int idx = 0;
+			while(!isFinished){  
+				bIsDirectory = ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0);  
+              
+				//如果是.或..  
+				if( bIsDirectory  
+					&& (strcmp(fd.cFileName, ".")==0 || strcmp(fd.cFileName, "..")==0))   
+				{         
+					isFinished = (QOutEnvFSModel::pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
+					continue;  
+				} 
+				char subAbsPath[MAX_PATH];
+				sprintf(subAbsPath,"%s\\%s",abspath,fd.cFileName);
+				totalsize += getFileDirSize(subAbsPath);
+				emit updateSize(totalsize);
+				isFinished = (QOutEnvFSModel::pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
+			}  
+          
+			QOutEnvFSModel::pFunc->FindClose(hFindFile);  
+		}
+	}
+	else {
+		long long thisSize = wfad.nFileSizeHigh ;
+		thisSize <<= 32;
+		thisSize += wfad.nFileSizeLow;
+		thisSize /= QOutEnvFSModel::ONCEBLOCK;
+		totalsize = thisSize ;
+	}
+
+	return totalsize;
 }
 
 QModelIndex QOutEnvFSModel::index(int row, int column,

@@ -3,9 +3,8 @@
 
 #include <QtGui>
 #include "qoutenvfsmodel.h"
-#include "HistoryModel.h"
 #include "ui_insaveenvdlg.h"
-#include "CFriendViewModel.h"
+#include "FProgWaitDlg.h"
 
 class InSaveEnvDlg : public QDialog
 {
@@ -14,22 +13,30 @@ class InSaveEnvDlg : public QDialog
 public:
 	InSaveEnvDlg(QWidget *parent = 0, Qt::WFlags flags = 0);
 	~InSaveEnvDlg();
+signals:
+	//void calcSize(QList<QString>);
+	//void copyToInEnvs(QList<QString>,QString target);
+	//void copyToOutEnvs(QList<QString>,QString target);
 
 private slots:
 	void OutEnvSelected(QModelIndex selIndex);
 	void InEnvSelected(QModelIndex selIndex);
 	void CopyToInEnv();
 	void CopyToOutEnv();
+	QString calcShowSize(DWORD showsize);
+	void showCalcSize(unsigned int calcSize);
+	void updateMsg(unsigned int);
+	void updateItemCount(int);
 
 private:
 	Ui::InSaveEnvDlgClass ui;
-#if 1
 	QOutEnvFSModel OutModel;
-#else
-	//HistoryModel OutModel;
-	CFriendViewModel OutModel;
-#endif
+	FProgWaitDlg *m_tpDlg;
+
 	QFileSystemModel InModel;
+	int m_selOutTotalSize;
+	int m_selTotalCount ;
+	BgWorkThread * m_pBgWorkThread;
 };
 
 #endif // INSAVEENVDLG_H
