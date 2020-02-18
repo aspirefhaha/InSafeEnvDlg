@@ -26,7 +26,8 @@ private slots:
 	QString calcShowSize(DWORD showsize);
 	void showCalcSize(unsigned int calcSize);
 	void updateMsg(unsigned int);
-	void updateItemCount(int);
+	void updateItemCount(int,int);
+	void copyFinished();
 
 private:
 	Ui::InSaveEnvDlgClass ui;

@@ -23,23 +23,28 @@ FProgWaitDlg::FProgWaitDlg(QWidget *parent,FDTYPE fdtype)
 	switch(m_fdtype){
 	case FDT_WAIT:
 		label = new QLabel(this);
+		icolabel = new QLabel(this);
 		button  = new QPushButton("Cancel",this);
 		//label->setContentsMargins(0,0,0,0);
 		/*QPalettepalette;palette.setBrush(QPalette::Background,QBrush(QPixmap("E:/qml/imgdialog/loading.gif")));
 		this->setPalette(palette)*/;
-		//movie = new QMovie(":/gif/waiting.gif");
+		movie = new QMovie(":/gif/waiting.gif");
 		//movie = new QMovie("D:/waiting.gif");
 		label->setText("Please Waiting... ...");
 		label->setAutoFillBackground(true);
-		
-		label->setPixmap(QPixmap(":/jpg/time.png").scaled(
-                        label->size(),
+		icolabel->setAutoFillBackground(true);
+		/*
+		icolabel->setPixmap(QPixmap(":/jpg/time.png").scaled(
+                        icolabel->size(),
                         Qt::IgnoreAspectRatio,
                         Qt::SmoothTransformation)); 
+						*/
 
-		//label->setMovie(movie);
-		//movie->start();
+		icolabel->setMovie(movie);
+		movie->start();
+		icolabel->show();
 		label->show();
+		layout->addWidget(icolabel);
 		layout->addWidget(label);
 		layout->addWidget(button);
 		break;
@@ -76,12 +81,22 @@ FProgWaitDlg::~FProgWaitDlg()
 	case FDT_PROG:
 		break;
 	}
-	if(label)
+	if(label){
 		delete label;
-	if(movie)
+		label = NULL;
+	}
+	if(icolabel){
+		delete icolabel;
+		icolabel = NULL;
+	}
+	if(movie){
 		delete movie;
-	if(button)
+		movie = NULL;
+	}
+	if(button){
 		delete button;
+		button = NULL;
+	}
 
 }
 

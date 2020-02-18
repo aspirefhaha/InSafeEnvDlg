@@ -22,6 +22,7 @@ public:
 
 private:
 	QLabel * label;
+	QLabel * icolabel;
 	QMovie * movie;
 	QPushButton * button;
 	FDTYPE m_fdtype;

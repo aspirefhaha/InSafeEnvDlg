@@ -54,10 +54,10 @@ public:
 	const static int ONCEBLOCK = 512;
 	
 	static FhahaLib_Func * pFunc;
+	BOOL isDirectory(const char * dirpath);
 
 public slots:
-	void calcSize_slot(QList<QString> selPaths);
-	//void copyToInEnv_slot(QList<QString> selpaths,QString target);
+
 	
 private:
 	QList<OutEnvFSPrivate *> m_rootDrives;
@@ -82,20 +82,26 @@ public:
 	void setSelPath(QList<QString> &selpaths){
 		m_selPaths=selpaths;
 	}
+	void setOutTargetDir(QString tardir){
+		m_outtertarget = tardir;
+	}
 	void setInnerTargetDir(QString &targetdir){
 		m_innertarget = targetdir;
 	}
 	
 	DWORD getFileDirSize(const char * abspath);
-	DWORD getSubItemCount(const char * abspath);
+	DWORD getOutSubItemCount(const char * abspath);
+	int getInSubItemCount(QString rootdir,QString curdir,QList<QPair<QString,QString>> &subitems);
 	int CopyFilesToInner(QList<QString> selOutPaths,QString intargetdir);
+	int CopyFilesToOuter(QList<QPair<QString,QString>> & copyitems);
 	void setWorkMode(BGWORKMODE mode){
 		m_bgworkmode = mode;
 	}
 signals:
 	void calcSizeRes(unsigned int);
-	void calcItemCount(int);
+	void calcItemCount(int,int);
 	void updateSize(unsigned int);
+	void copyDone();
 protected:
 	bool m_bIsQuit;
 	QList<QString> m_selPaths;
@@ -104,8 +110,11 @@ protected:
 private:
 	BGWORKMODE m_bgworkmode ;
 	QString m_innertarget;
-	void CopyFileToInner(const char * outdir,const char * filename,const char * indir);
-
+	QString m_outtertarget;
+	int m_alreadyCopyedCount;
+	int m_currentTotalCount;
+	void CopyFileToInner(const char * outdir,const char * filename,const char * indir,const char * outrootdir);
+	void CopyDirToInner(const char * outdir,const char * outdirname,const char * indir,const char * outrootdir);
 };
 
 #endif // QOUTENVFSMODEL_H

@@ -8,10 +8,14 @@ InSaveEnvDlg::InSaveEnvDlg(QWidget *parent, Qt::WFlags flags)
 	m_pBgWorkThread = new BgWorkThread(this);
 	connect(m_pBgWorkThread,SIGNAL(calcSizeRes(unsigned int)),this,SLOT(showCalcSize(unsigned int)));
 	connect(m_pBgWorkThread,SIGNAL(updateSize(unsigned int)),this,SLOT(updateMsg(unsigned int)));
-	connect(m_pBgWorkThread,SIGNAL(calcItemCount(int)),this,SLOT(updateItemCount(int)));
+	connect(m_pBgWorkThread,SIGNAL(calcItemCount(int,int)),this,SLOT(updateItemCount(int,int)));
+	connect(m_pBgWorkThread,SIGNAL(copyDone()),this,SLOT(copyFinished()));
 	//OutModel.setRootPath("");
 
 	//ui.tv_OutEnv->setRootIndex(OutModel.index("C:\\hadoop-2.7.7"));
+	m_tpDlg = new FProgWaitDlg(NULL,FDT_WAIT);
+	m_tpDlg->setModal(true);
+	
 #if 1
 	//OutModel.addRootDevice("C:\\hadoop-2.7.7",OUTFTDIR);
 	//OutModel.addRootDevice("D:\\ddj\\xt1pilot_ms\\GenFunc.c",OUTFTFILE);
@@ -45,17 +49,16 @@ InSaveEnvDlg::InSaveEnvDlg(QWidget *parent, Qt::WFlags flags)
 
     //InModel.setRootPath(QDir::currentPath());
 	ui.tv_InEnv->setSelectionMode(QAbstractItemView::ExtendedSelection); 
-	InModel.setRootPath("D:\\Temp\\");
+	InModel.setRootPath("D:/Temp/");
     ui.tv_InEnv->setModel(&InModel);
 	//ui.tv_InEnv->setRootIndex(InModel.index(QDir::currentPath()));
-	ui.tv_InEnv->setRootIndex(InModel.index("D:\\Temp\\"));
+	ui.tv_InEnv->setRootIndex(InModel.index("D:/Temp/"));
 	
     // Demonstrating look and feel features
     ui.tv_InEnv->setAnimated(false);
     ui.tv_InEnv->setIndentation(20);
     ui.tv_InEnv->setSortingEnabled(true);
 	//ui.tv_InEnv->setUniformRowHeights(true);
-	//connect(this,SIGNAL(calcSize(QList<QString>)),&OutModel,SLOT(calcSize_slot(QList<QString>)));
 }
 
 InSaveEnvDlg::~InSaveEnvDlg()
@@ -63,9 +66,14 @@ InSaveEnvDlg::~InSaveEnvDlg()
 
 }
 
-void InSaveEnvDlg::updateItemCount(int totalcount)
+void InSaveEnvDlg::copyFinished()
 {
-	m_tpDlg->setCountIndex(0,totalcount);
+	m_tpDlg->close();
+}
+
+void InSaveEnvDlg::updateItemCount(int idx,int totalcount)
+{
+	m_tpDlg->setCountIndex(idx,totalcount);
 	m_selTotalCount = totalcount;
 	//ui.lb_OutSelected->setText(calcShowSize(totalsize));
 }
@@ -100,7 +108,7 @@ void InSaveEnvDlg::OutEnvSelected(QModelIndex selIndex)
 	//ui.lb_OutSelected->setWindowTitle("haha");
 	//QString fhahaStr= QString("column %1 row %2 of parent %3").arg(selIndex.column()).arg(selIndex.row()).arg(selIndex.parent().row());
 	//QString dirStr = QString("%1").arg(OutModel.filePath(selIndex));
-	
+#if 0	
 	QModelIndexList selected = ui.tv_OutEnv->selectionModel()->selectedRows(0);
 
 	QList<QModelIndex>::const_iterator cit;
@@ -122,25 +130,21 @@ void InSaveEnvDlg::OutEnvSelected(QModelIndex selIndex)
 		selpath.append(subItemPath);
 	}
 	//ui.lb_OutSelected->setText(calcShowSize(selectSize) + " " + strSelect);
+	m_pBgWorkThread->setWorkMode(WMCALCSIZE);
 	m_pBgWorkThread->setSelPath(selpath);
 	m_pBgWorkThread->start();
 	m_tpDlg = new FProgWaitDlg(NULL,FDT_WAIT);
 	//m_tpDlg->setModal(true);
 	m_tpDlg->exec();
+#endif
 }
 
 void InSaveEnvDlg::InEnvSelected(QModelIndex selIndex)
 {
-	//QString fhahaStr= QString("column %1 row %2 of parent %3").arg(selIndex.column()).arg(selIndex.row()).arg(selIndex.parent().row());
-	//QString dirStr = QString("%1").arg(InModel.filePath(selIndex));
-	//ui.lb_InSelected->setText(dirStr + "   " + fhahaStr);
-
 	QModelIndexList selected = ui.tv_InEnv->selectionModel()->selectedRows(0);
-
 	QList<QModelIndex>::const_iterator cit;
 	QModelIndex temp;
 	QString strSelect;
-
 	for (cit = selected.begin(); cit != selected.end(); ++cit)
 	{
 		temp = *cit;
@@ -194,7 +198,42 @@ void InSaveEnvDlg::CopyToInEnv()
 
 void InSaveEnvDlg::CopyToOutEnv()
 {
-
+	//确保环境外选择的是一个目录
+	QModelIndexList selected = ui.tv_OutEnv->selectionModel()->selectedRows(0);
+	if(selected.size() >1 || selected.size() <=0){
+		QMessageBox::warning(this,tr("Target Count Err"), tr("multi target dir or nothing is choosed,pls select a singe dir as target"), 
+			QMessageBox::Ok,QMessageBox::Ok);
+		return;
+	}
+	QModelIndex temp = selected.first();
+	OutEnvFSPrivate * pPriv = static_cast<OutEnvFSPrivate *>(temp.internalPointer());
+	QString tarDir = pPriv->absPath;
+	if(!OutModel.isDirectory(tarDir.toStdString().c_str())){
+		QMessageBox::warning(this, tr("Target Type Err"), tr("Target is Not Dir"),QMessageBox::Ok,QMessageBox::Ok);
+		return;
+	}
+	
+	//处理环境内的选择
+	QModelIndexList inselected = ui.tv_InEnv->selectionModel()->selectedRows(0);
+	if(inselected.size() <=0){
+		QMessageBox::warning(this,tr("Source Count Err"), tr("no source dir or file is choosed,pls select source"), 
+			QMessageBox::Ok,QMessageBox::Ok);
+		return;
+	}
+	
+	QList<QModelIndex>::iterator cit = inselected.begin();
+	QList<QString> selInPaths ;
+	for (; cit != inselected.end(); ++cit)
+	{
+		temp = *cit;
+		selInPaths.append(InModel.filePath(temp));
+		
+	}
+	m_pBgWorkThread->setSelPath(selInPaths);
+	m_pBgWorkThread->setOutTargetDir(tarDir);
+	m_pBgWorkThread->setWorkMode(WMCOPYTOOUTER);
+	m_pBgWorkThread->start();
+	m_tpDlg->exec();
 }
 
 

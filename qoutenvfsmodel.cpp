@@ -42,11 +42,6 @@ QOutEnvFSModel::QOutEnvFSModel(QObject *parent)
 	
 }
 
-void QOutEnvFSModel::calcSize_slot(QList<QString> selPaths)
-{
-
-}
-
 QOutEnvFSModel::~QOutEnvFSModel()
 {
 	if(LibHandle!=NULL){
@@ -91,36 +86,103 @@ void BgWorkThread::run()
 			int totalcount = 0;
 			QList<QString>::Iterator iter = m_selPaths.begin();
 			for(;iter!=m_selPaths.end() && !m_bIsQuit;iter++){
-				totalcount += getSubItemCount((*iter).toStdString().c_str());
+				totalcount += getOutSubItemCount((*iter).toStdString().c_str());
 			}
-			emit calcItemCount(totalcount);
-			
+			emit calcItemCount(0,totalcount);
+			m_currentTotalCount = totalcount;
 			CopyFilesToInner(m_selPaths,m_innertarget);
 		}
 		break;
 	case WMCOPYTOOUTER:
 		{
-
+			int totalcount = 0;
+			QList<QString>::Iterator iter = m_selPaths.begin();
+			QList<QPair<QString,QString>> selSources;
+			for(;iter!=m_selPaths.end() && !m_bIsQuit;iter++){
+				QString curPath = (*iter);
+				QDir updir(curPath);
+				if(updir.cdUp()){
+					QString filename;
+					totalcount += getInSubItemCount(updir.absoluteFilePath(filename),curPath,selSources);
+				}
+				
+			}
+			emit calcItemCount(0,selSources.size());
+			
+			CopyFilesToOuter(selSources);
 		}
 		break;
 	}
 }
 
-void  BgWorkThread::CopyFileToInner(const char * outdir,const char * filename,const char * indir)
+void BgWorkThread::CopyDirToInner(const char * outdir,const char * outdirname,const char * indir,const char * outrootdir)
+{
+	char sourceabspath[MAX_PATH]={0};
+	char targetabspath[MAX_PATH]={0};
+	char findabspath[MAX_PATH]={0};
+	int outrootdirlen = strlen(outrootdir);
+	sprintf(findabspath,"%s/%s/*",outdir,outdirname);
+	sprintf(sourceabspath,"%s/%s",outdir,outdirname);
+	char * poutpath = sourceabspath+outrootdirlen+1;
+	sprintf(targetabspath,"%s/%s",indir,poutpath);
+	QDir dir(QString::fromLocal8Bit(targetabspath));
+    if(!dir.exists())
+    {
+      dir.mkdir(QString::fromLocal8Bit(targetabspath));//只创建一级子目录，即必须保证上级目录存在
+    }
+	WIN32_FIND_DATA fd;
+    long long hFindFile = QOutEnvFSModel::pFunc->FindFirstFile(findabspath,&fd);
+	if(hFindFile == -1 || hFindFile == 0){
+		QOutEnvFSModel::pFunc->CloseHandle(hFindFile);
+		return;
+	}
+	else{
+		bool isFinished = false;
+		BOOL bIsDirectory = FALSE;
+		int idx = 0;
+		while(!isFinished){  
+			bIsDirectory = ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0);  
+              
+			//如果是.或..  
+			if( bIsDirectory  
+				&& (strcmp(fd.cFileName, ".")==0 || strcmp(fd.cFileName, "..")==0))   
+			{         
+				isFinished = (QOutEnvFSModel::pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
+				continue;  
+			} 
+			
+			if(bIsDirectory){
+				CopyDirToInner(sourceabspath,fd.cFileName,indir,outrootdir);
+			}
+			else{
+				CopyFileToInner(sourceabspath,fd.cFileName,indir,outrootdir);
+			}
+			isFinished = (QOutEnvFSModel::pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
+		}  
+          
+		QOutEnvFSModel::pFunc->FindClose(hFindFile);  
+	}
+	m_alreadyCopyedCount++;
+	emit calcItemCount(m_alreadyCopyedCount,m_currentTotalCount);
+}
+
+void  BgWorkThread::CopyFileToInner(const char * outdir,const char * filename,const char * indir,const char * outrootdir)
 {
 	char tmpdata[QOutEnvFSModel::ONCEBLOCK];
 	char sourcefilename[MAX_PATH]={0};
 	DWORD readCount = 0;
-	sprintf(sourcefilename,"%s\\%s",outdir,filename);
+	sprintf(sourcefilename,"%s/%s",outdir,filename);
 	QFile file;
-	QString targetfilename = QString("%1\\%2").arg(QString::fromLocal8Bit(indir)).arg(QString::fromLocal8Bit(filename));
+	char * poutfilename = sourcefilename + strlen(outrootdir)+1;
+	QString targetfilename = QString("%1/%2").arg(QString::fromLocal8Bit(indir)).arg(QString::fromLocal8Bit(poutfilename));
     //关联文件名字
     file.setFileName(targetfilename);
 
     //打开文件，只写方式
     bool isOk = file.open(QIODevice::WriteOnly);
-	if(!isOk)
+	if(!isOk){
 		return;
+	}
 	HANDLE inh = (HANDLE)QOutEnvFSModel::pFunc->CreateFile((char *)sourcefilename,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_RANDOM_ACCESS,NULL);
 	if(inh != (HANDLE)(-1) && inh != (HANDLE)0){
 		BOOL tRet = TRUE;
@@ -135,17 +197,73 @@ void  BgWorkThread::CopyFileToInner(const char * outdir,const char * filename,co
 	}
 	file.close();
 	QOutEnvFSModel::pFunc->CloseHandle((long long)inh);
+	m_alreadyCopyedCount++;
+	emit calcItemCount(m_alreadyCopyedCount,m_currentTotalCount);
+}
+
+int BgWorkThread::CopyFilesToOuter(QList<QPair<QString,QString>> & copyitems)
+{
+	m_alreadyCopyedCount = 0;
+	m_currentTotalCount = copyitems.size();
+	QPair<QString,QString> copyitem;
+	foreach(copyitem,copyitems){
+		QFileInfo fileinfo(copyitem.first);
+		char outpath[MAX_PATH]={0};
+		char tmpdirname[MAX_PATH]={0};
+		strcpy(tmpdirname,copyitem.second.toLocal8Bit().data());
+		int rootlen = strlen(tmpdirname);
+		strcpy(tmpdirname,copyitem.first.toLocal8Bit().data());
+		char * pdirname = tmpdirname + rootlen;
+		sprintf_s(outpath,MAX_PATH,"%s/%s",m_outtertarget.toStdString().c_str(),pdirname);
+		if(fileinfo.isDir()){
+			BOOL tExist = QOutEnvFSModel::pFunc->PathFileExists(outpath);
+			if(!tExist){
+				QOutEnvFSModel::pFunc->CreateDirectory(outpath,NULL);
+			}
+			m_alreadyCopyedCount++;
+			emit calcItemCount(m_alreadyCopyedCount,m_currentTotalCount);
+		}
+		else{
+			do{
+				QFile ifile(copyitem.first);
+				if(!ifile.open(QIODevice::ReadOnly)){
+					break;
+				}
+				HANDLE th = (HANDLE)QOutEnvFSModel::pFunc->CreateFile(outpath,GENERIC_WRITE,0,NULL,CREATE_NEW,FILE_FLAG_RANDOM_ACCESS,NULL);
+				if(th == (HANDLE)-1 || th == (HANDLE)0){
+					break;
+				}
+				char tmpdata[QOutEnvFSModel::ONCEBLOCK];
+				int readlen = 0;
+				DWORD tRetLen = 0;
+				do{
+					readlen = (int)ifile.read(tmpdata,QOutEnvFSModel::ONCEBLOCK);
+					if(readlen >0){
+						QOutEnvFSModel::pFunc->WriteFile((long long )th,tmpdata,readlen,&tRetLen,NULL);
+					}
+				}while(readlen > 0 && tRetLen == readlen);
+				QOutEnvFSModel::pFunc->CloseHandle((long long)th);
+				ifile.close();
+
+			}while(0);
+			m_alreadyCopyedCount++;
+			emit calcItemCount(m_alreadyCopyedCount,m_currentTotalCount);
+		}
+	}
+	emit copyDone();
+	return 0;
 }
 
 int BgWorkThread::CopyFilesToInner(QList<QString> selOutPaths,QString intargetdir)
 {
+	m_alreadyCopyedCount = 0;
 	QList<QString>::Iterator iter = m_selPaths.begin();
 	for(;iter!=m_selPaths.end() && !m_bIsQuit;iter++){
 		char outdirname[MAX_PATH];
 		char outRootDir[MAX_PATH]={0};
 		strcpy(outdirname,(*iter).toStdString().c_str());
 		strcpy(outRootDir,outdirname);
-		char * pUpSlash = strrchr(outRootDir,'\\');
+		char * pUpSlash = strrchr(outRootDir,'/');
 		char * filename = pUpSlash + 1;
 		*pUpSlash=0;
 		WIN32_FILE_ATTRIBUTE_DATA wfad;
@@ -156,15 +274,15 @@ int BgWorkThread::CopyFilesToInner(QList<QString> selOutPaths,QString intargetdi
 			return 0;
 		}
 		if(wfad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY){ // is a dir
-
+			CopyDirToInner(outRootDir,filename,intargetdir.toStdString().c_str(),outRootDir);
 		}
 		else{ // is a file 
-			CopyFileToInner(outRootDir,filename,intargetdir.toStdString().c_str());
-
+			CopyFileToInner(outRootDir,filename,intargetdir.toStdString().c_str(),outRootDir);
+			
 		}
 
-		//totalcount += getSubItemCount();
 	}
+	emit copyDone();
 	return 0;
 }
 
@@ -178,8 +296,22 @@ BgWorkThread::~BgWorkThread()
 
 }
 
+int BgWorkThread::getInSubItemCount(QString rootdir,QString curdir,QList<QPair<QString,QString>> &subitems)
+{
+	QDir dir(curdir);
+	subitems.append(QPair<QString,QString>(curdir,rootdir));
+    dir.setFilter(QDir::Dirs|QDir::Files);
+    foreach(QFileInfo fullDir, dir.entryInfoList())
+    {
+        if(fullDir.fileName() == "." || fullDir.fileName() == "..") continue;
+        subitems.append(QPair<QString,QString>(fullDir.absoluteFilePath(),rootdir));
+        getInSubItemCount(rootdir,fullDir.absoluteFilePath(), subitems);
+    }
 
-DWORD BgWorkThread::getSubItemCount(const char * abspath)
+    return subitems.count();
+}
+
+DWORD BgWorkThread::getOutSubItemCount(const char * abspath)
 {
 	DWORD totalcount = 0;
 	WIN32_FILE_ATTRIBUTE_DATA wfad;
@@ -193,9 +325,9 @@ DWORD BgWorkThread::getSubItemCount(const char * abspath)
 		char tmppath[MAX_PATH];
 		strcpy_s(tmppath,MAX_PATH,abspath);
 		int len = strlen(tmppath);
-		if(tmppath[len-1]!='\\')
+		if(tmppath[len-1]!='/')
 		{
-			tmppath[len]='\\';
+			tmppath[len]='/';
 			tmppath[len+1]='*';
 			tmppath[len+2] = 0;
 		}
@@ -224,8 +356,8 @@ DWORD BgWorkThread::getSubItemCount(const char * abspath)
 					continue;  
 				} 
 				char subAbsPath[MAX_PATH];
-				sprintf(subAbsPath,"%s\\%s",abspath,fd.cFileName);
-				totalcount += getSubItemCount(subAbsPath);
+				sprintf(subAbsPath,"%s/%s",abspath,fd.cFileName);
+				totalcount += getOutSubItemCount(subAbsPath);
 				totalcount ++;
 				emit updateSize(totalcount);
 				isFinished = (QOutEnvFSModel::pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
@@ -256,9 +388,9 @@ DWORD BgWorkThread::getFileDirSize(const char * abspath)
 		char tmppath[MAX_PATH];
 		strcpy_s(tmppath,MAX_PATH,abspath);
 		int len = strlen(tmppath);
-		if(tmppath[len-1]!='\\')
+		if(tmppath[len-1]!='/')
 		{
-			tmppath[len]='\\';
+			tmppath[len]='/';
 			tmppath[len+1]='*';
 			tmppath[len+2] = 0;
 		}
@@ -287,7 +419,7 @@ DWORD BgWorkThread::getFileDirSize(const char * abspath)
 					continue;  
 				} 
 				char subAbsPath[MAX_PATH];
-				sprintf(subAbsPath,"%s\\%s",abspath,fd.cFileName);
+				sprintf(subAbsPath,"%s/%s",abspath,fd.cFileName);
 				totalsize += getFileDirSize(subAbsPath);
 				emit updateSize(totalsize);
 				isFinished = (QOutEnvFSModel::pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
@@ -305,6 +437,20 @@ DWORD BgWorkThread::getFileDirSize(const char * abspath)
 	}
 
 	return totalsize;
+}
+
+BOOL QOutEnvFSModel::isDirectory(const char * dirpath)
+{
+	if(pFunc){
+		WIN32_FILE_ATTRIBUTE_DATA wfad;
+		BOOL tRet = pFunc->GetFileAttributesEx(dirpath,GetFileExInfoStandard,&wfad);
+		if(!tRet){
+			return FALSE;
+		}
+		return wfad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
+
+	}
+	return FALSE;
 }
 
 QModelIndex QOutEnvFSModel::index(int row, int column,
@@ -336,36 +482,13 @@ QModelIndex QOutEnvFSModel::index(int row, int column,
 			case OUTFTDIR:
 				{
 					//根据路径，row行数,返回绝对路径和类型
-#if 0
-					QDir rootDir = QDir(parentItemPtr->absPath);
-					rootDir.setFilter(QDir::Files | QDir::Hidden | QDir::NoSymLinks | QDir::AllDirs | QDir::NoDotAndDotDot);
-					//rootDir.setSorting(QDir::Size | QDir::Reversed);
-					QFileInfoList list = rootDir.entryInfoList();//返回这个目录中所有目录和文件的QFileInfo对象的列表
-					if(!list.isEmpty()){
-						QFileInfo tem = list.at(row);
-						childPath =  tem.absoluteFilePath() ;
-						if(!tem.isDir()){
-							childType = OUTFTFILE;
-						}else {
-							childType = OUTFTDIR;
-						}
-						OutEnvFSPrivate * pFind = NULL;
-						pFind = findOutFSChild(childPath,childType);
-						if(pFind == NULL){
-							pFind = new OutEnvFSPrivate(childPath,childType,row,column,parentItemPtr);
-							(const_cast<QOutEnvFSModel*>(this))->m_allItems.append(pFind);
-						}
-						return createIndex(row,column,pFind);
-						
-					}
-#else
 					//childType = InEnvDirPlugin::GetFileInfoInDir(parentItemPtr->absPath,row,childPath);
 					char lpPath[MAX_PATH] = {0};
 					int len = 0;
 					strcpy(lpPath,parentItemPtr->absPath.toStdString().c_str());
 					len = strlen(lpPath);
-					if(lpPath[len-1]!='\\'){
-						lpPath[len]='\\';
+					if(lpPath[len-1]!='/'){
+						lpPath[len]='/';
 						lpPath[len+1]=0;
 					}
 					BOOL tmpRet = pFunc->SetCurrentDirectory((LPCTSTR)lpPath);
@@ -395,17 +518,20 @@ QModelIndex QOutEnvFSModel::index(int row, int column,
 								isFinished = (pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
 								continue;  
 							} 
-							if(idx == row){ //find one
-								if(bIsDirectory){
-									childType = OUTFTDIR;
+							if((fd.dwFileAttributes & FILE_ATTRIBUTE_NORMAL) || bIsDirectory){
+								if(idx == row){ //find one
+									if(bIsDirectory){
+										childType = OUTFTDIR;
+									}
+									else
+										childType = OUTFTFILE;
+									childPath = parentItemPtr->absPath + "/" + fd.cFileName;
+									isFinished = TRUE;
+									continue;
 								}
-								else
-									childType = OUTFTFILE;
-								childPath = parentItemPtr->absPath + "\\" + fd.cFileName;
-								isFinished = TRUE;
-								continue;
+								idx++;
+
 							}
-							idx++;
 							isFinished = (pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
 						}  
           
@@ -420,7 +546,6 @@ QModelIndex QOutEnvFSModel::index(int row, int column,
 						}
 						return createIndex(row,column,pFind);
 					}
-#endif
 
 				}
 				break;
@@ -563,7 +688,7 @@ QVariant QOutEnvFSModel::data(const QModelIndex & index,
 				int len = 0;
 				strcpy(lpPath,fspath.toStdString().c_str());
 				WIN32_FILE_ATTRIBUTE_DATA wfad;
-				char * pos = strrchr(lpPath,'\\');
+				char * pos = strrchr(lpPath,'/');
 #define TRANSUTF8 0
 				char * pUtf8 = lpPath;
 				if(pos != NULL){
@@ -664,8 +789,8 @@ QVariant QOutEnvFSModel::data(const QModelIndex & index,
 				int len = 0;
 				strcpy(lpPath,fspath.toStdString().c_str());
 				len = strlen(lpPath);
-				if(lpPath[len-1]!='\\'){
-					lpPath[len]='\\';
+				if(lpPath[len-1]!='/'){
+					lpPath[len]='/';
 					lpPath[len+1]=0;
 				}
 				filename = lpPath;
@@ -810,15 +935,14 @@ int QOutEnvFSModel::rowCount(const QModelIndex &parent ) const
 			{
 				//根据输入的目录绝对地址，获取下级文件和文件夹的数量
 				int listsize = 0;
-#if 1
 				//listsize = InEnvDirPlugin::GetSubItemCount(parentData->absPath);
 				char lpPath[MAX_PATH] = {0};
 				//char tempPath[MAX_PATH] ={0};
 				int len = 0;
 				strcpy(lpPath,parentData->absPath.toStdString().c_str());
 				len = strlen(lpPath);
-				if(lpPath[len-1]!='\\'){
-					lpPath[len]='\\';
+				if(lpPath[len-1]!='/'){
+					lpPath[len]='/';
 					lpPath[len+1]=0;
 				}
 				BOOL tmpRet  = pFunc->SetCurrentDirectory((LPCTSTR)lpPath);
@@ -847,20 +971,16 @@ int QOutEnvFSModel::rowCount(const QModelIndex &parent ) const
 							isFinished = (pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
 							continue;  
 						}  
-						listsize++;
+						if((fd.dwFileAttributes & FILE_ATTRIBUTE_NORMAL) || (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)){
+							
+							listsize++;
+						}
 						isFinished = (pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
 					}  
           
 					pFunc->FindClose(hFindFile);  
 				}
-#else
-				QDir curDir(parentData->absPath);
-				curDir.setFilter(QDir::Files | QDir::Hidden | QDir::NoSymLinks | QDir::AllDirs|QDir::NoDotAndDotDot);
-				//curDir.setSorting(QDir::Size | QDir::Reversed);
-				QFileInfoList list = curDir.entryInfoList();//返回这个目录中所有目录和文件的QFileInfo对象的列表
-				listsize = list.size();
-				//qDebug() << "get " << parentData->absPath << " size " << listsize;
-#endif
+
 				return listsize;
 				//return 0;
 			}
