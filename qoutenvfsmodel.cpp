@@ -518,7 +518,7 @@ QModelIndex QOutEnvFSModel::index(int row, int column,
 								isFinished = (pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
 								continue;  
 							} 
-							if((fd.dwFileAttributes & FILE_ATTRIBUTE_NORMAL) || bIsDirectory){
+							if(((fd.dwFileAttributes & FILE_ATTRIBUTE_ARCHIVE) || (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) && (fd.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) == 0 && (fd.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)==0 ){
 								if(idx == row){ //find one
 									if(bIsDirectory){
 										childType = OUTFTDIR;
@@ -971,7 +971,7 @@ int QOutEnvFSModel::rowCount(const QModelIndex &parent ) const
 							isFinished = (pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
 							continue;  
 						}  
-						if((fd.dwFileAttributes & FILE_ATTRIBUTE_NORMAL) || (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)){
+						if(((fd.dwFileAttributes & FILE_ATTRIBUTE_ARCHIVE) || (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) && (fd.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) == 0 && (fd.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)==0 ){
 							
 							listsize++;
 						}
