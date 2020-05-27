@@ -6,4 +6,8 @@ Debug
 *.aps
 *.filters
 *.user
+*.suo
+*.sdf
+*.opensdf
+ipch
 GeneratedFiles
