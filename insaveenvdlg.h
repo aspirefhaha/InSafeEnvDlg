@@ -5,6 +5,7 @@
 #include "qoutenvfsmodel.h"
 #include "ui_insaveenvdlg.h"
 #include "FProgWaitDlg.h"
+#include <qprogressdialog.h>
 
 class InSaveEnvDlg : public QDialog
 {
@@ -24,7 +25,8 @@ private slots:
 	void CopyToInEnv();
 	void CopyToOutEnv();
 	QString calcShowSize(DWORD showsize);
-	void showCalcSize(unsigned int calcSize);
+	void showCountSize(int,qlonglong);
+	void showProcedCountSize(int,qlonglong);
 	void updateMsg(unsigned int);
 	void updateItemCount(int,int);
 	void copyFinished();
@@ -33,6 +35,7 @@ private:
 	Ui::InSaveEnvDlgClass ui;
 	QOutEnvFSModel OutModel;
 	FProgWaitDlg *m_tpDlg;
+	QProgressDialog dia;
 
 	QFileSystemModel InModel;
 	int m_selOutTotalSize;

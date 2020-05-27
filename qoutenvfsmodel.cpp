@@ -24,7 +24,6 @@ QOutEnvFSModel::QOutEnvFSModel(QObject *parent)
 	PFhahaLibGetProcStruct ProcAdd;
 	if(LibHandle == NULL){
 		LibHandle = LoadLibraryA("FhahaLib.dll");
-		qDebug() << "user32 LibHandle = " << LibHandle;
 		if(LibHandle){
 			ProcAdd=(PFhahaLibGetProcStruct)GetProcAddress(LibHandle,"FhahaLibGetProcStruct");    
 			qDebug() << "Get Func Address" <<  ProcAdd;
@@ -38,6 +37,11 @@ QOutEnvFSModel::QOutEnvFSModel(QObject *parent)
 			}
 		
 		}
+		else{
+			DWORD le = GetLastError();
+			qDebug() << "load FhahaLib.dll failed for " << le ;
+		}
+		qDebug() << "user32 LibHandle = " << LibHandle;
 	}
 	
 }
@@ -71,43 +75,57 @@ void BgWorkThread::run()
 	switch(m_bgworkmode){
 	case WMCALCSIZE:
 		{
-			DWORD totalsize = 0;
-			QList<QString>::iterator iter = m_selPaths.begin();
-			for(;iter!=m_selPaths.end() && !m_bIsQuit;iter++){
-				totalsize += getFileDirSize((*iter).toStdString().c_str());
-		
+			switch(m_bgworknextmode){
+			case WMCOPYTOINNER:
+				{
+					qlonglong totalsize = 0;
+					DWORD totalcount = 0;
+					QList<QString>::iterator iter = m_selPaths.begin();
+					for(;iter!=m_selPaths.end() && !m_bIsQuit;iter++){
+						totalsize += getFileDirSize((*iter).toStdString().c_str());
+						totalcount += getOutSubItemCount((*iter).toStdString().c_str());
+					}
+					m_currentTotalCount = totalcount;
+					m_bgworkmode = m_bgworknextmode;
+					m_currentTotalSize = totalsize;
+					emit UpdateTotalCountSize(m_currentTotalCount,m_currentTotalSize);
+				}
+				break;
+			case WMCOPYTOOUTER:
+				{
+					qlonglong totalsize = 0;
+					selSources.clear();
+					QList<QString>::Iterator iter = m_selPaths.begin();
+					
+					for(;iter!=m_selPaths.end() && !m_bIsQuit;iter++){
+						QString curPath = (*iter);
+						QDir updir(curPath);
+						if(updir.cdUp()){
+							QString filename;
+							totalsize += getInSubItemCount(updir.absoluteFilePath(filename),curPath,selSources);
+						}
+				
+					}
+					m_currentTotalCount = selSources.size();
+					m_bgworkmode = m_bgworknextmode;
+					m_currentTotalSize = totalsize;
+					emit UpdateTotalCountSize(selSources.size(),totalsize/QOutEnvFSModel::ONCEBLOCK);
+				}
+				break;
 			}
-			emit calcSizeRes(totalsize);
+			
 		}
 		break;
 	
 	case WMCOPYTOINNER:
 		{
-			int totalcount = 0;
-			QList<QString>::Iterator iter = m_selPaths.begin();
-			for(;iter!=m_selPaths.end() && !m_bIsQuit;iter++){
-				totalcount += getOutSubItemCount((*iter).toStdString().c_str());
-			}
-			emit calcItemCount(0,totalcount);
-			m_currentTotalCount = totalcount;
 			CopyFilesToInner(m_selPaths,m_innertarget);
 		}
 		break;
 	case WMCOPYTOOUTER:
 		{
-			int totalcount = 0;
-			QList<QString>::Iterator iter = m_selPaths.begin();
-			QList<QPair<QString,QString>> selSources;
-			for(;iter!=m_selPaths.end() && !m_bIsQuit;iter++){
-				QString curPath = (*iter);
-				QDir updir(curPath);
-				if(updir.cdUp()){
-					QString filename;
-					totalcount += getInSubItemCount(updir.absoluteFilePath(filename),curPath,selSources);
-				}
-				
-			}
-			emit calcItemCount(0,selSources.size());
+			
+			//emit calcItemCount(0,selSources.size());
 			
 			CopyFilesToOuter(selSources);
 		}
@@ -163,14 +181,15 @@ void BgWorkThread::CopyDirToInner(const char * outdir,const char * outdirname,co
 		QOutEnvFSModel::pFunc->FindClose(hFindFile);  
 	}
 	m_alreadyCopyedCount++;
-	emit calcItemCount(m_alreadyCopyedCount,m_currentTotalCount);
+	//emit calcItemCount(m_alreadyCopyedCount,m_currentTotalCount);
 }
-
+#define BLOCKSCALE 1024
 void  BgWorkThread::CopyFileToInner(const char * outdir,const char * filename,const char * indir,const char * outrootdir)
 {
-	char tmpdata[QOutEnvFSModel::ONCEBLOCK];
+	char tmpdata[QOutEnvFSModel::ONCEBLOCK*BLOCKSCALE];
 	char sourcefilename[MAX_PATH]={0};
 	DWORD readCount = 0;
+	int emitcount = 0;
 	sprintf(sourcefilename,"%s/%s",outdir,filename);
 	QFile file;
 	char * poutfilename = sourcefilename + strlen(outrootdir)+1;
@@ -187,25 +206,32 @@ void  BgWorkThread::CopyFileToInner(const char * outdir,const char * filename,co
 	if(inh != (HANDLE)(-1) && inh != (HANDLE)0){
 		BOOL tRet = TRUE;
 		do{
-			tRet = QOutEnvFSModel::pFunc->ReadFile((long long)inh,tmpdata,QOutEnvFSModel::ONCEBLOCK,&readCount,NULL);
+			tRet = QOutEnvFSModel::pFunc->ReadFile((long long)inh,tmpdata,QOutEnvFSModel::ONCEBLOCK*BLOCKSCALE,&readCount,NULL);
 			if(tRet && readCount!=0){
 				if(file.write(tmpdata,readCount)!=readCount){
 					tRet = FALSE;
 				}
+				m_alreadyCopyedSize += readCount;
+				if(emitcount++%20==0){
+					emit ProcCountSize(m_alreadyCopyedCount,m_alreadyCopyedSize);
+				}
 			}
 		}while(tRet && readCount!=0);
 	}
+	file.flush();
 	file.close();
 	QOutEnvFSModel::pFunc->CloseHandle((long long)inh);
 	m_alreadyCopyedCount++;
-	emit calcItemCount(m_alreadyCopyedCount,m_currentTotalCount);
+	//emit calcItemCount(m_alreadyCopyedCount,m_currentTotalCount);
 }
 
 int BgWorkThread::CopyFilesToOuter(QList<QPair<QString,QString>> & copyitems)
 {
 	m_alreadyCopyedCount = 0;
+	m_alreadyCopyedSize = 0;
 	m_currentTotalCount = copyitems.size();
 	QPair<QString,QString> copyitem;
+	int emitcount = 0;
 	foreach(copyitem,copyitems){
 		QFileInfo fileinfo(copyitem.first);
 		char outpath[MAX_PATH]={0};
@@ -213,15 +239,15 @@ int BgWorkThread::CopyFilesToOuter(QList<QPair<QString,QString>> & copyitems)
 		strcpy(tmpdirname,copyitem.second.toLocal8Bit().data());
 		int rootlen = strlen(tmpdirname);
 		strcpy(tmpdirname,copyitem.first.toLocal8Bit().data());
-		char * pdirname = tmpdirname + rootlen;
+		char * pdirname = tmpdirname + rootlen+1;
 		sprintf_s(outpath,MAX_PATH,"%s/%s",m_outtertarget.toStdString().c_str(),pdirname);
 		if(fileinfo.isDir()){
 			BOOL tExist = QOutEnvFSModel::pFunc->PathFileExists(outpath);
 			if(!tExist){
 				QOutEnvFSModel::pFunc->CreateDirectory(outpath,NULL);
 			}
-			m_alreadyCopyedCount++;
-			emit calcItemCount(m_alreadyCopyedCount,m_currentTotalCount);
+			
+			
 		}
 		else{
 			do{
@@ -233,13 +259,18 @@ int BgWorkThread::CopyFilesToOuter(QList<QPair<QString,QString>> & copyitems)
 				if(th == (HANDLE)-1 || th == (HANDLE)0){
 					break;
 				}
-				char tmpdata[QOutEnvFSModel::ONCEBLOCK];
+				char tmpdata[QOutEnvFSModel::ONCEBLOCK*BLOCKSCALE];
 				int readlen = 0;
 				DWORD tRetLen = 0;
 				do{
-					readlen = (int)ifile.read(tmpdata,QOutEnvFSModel::ONCEBLOCK);
+					readlen = (int)ifile.read(tmpdata,QOutEnvFSModel::ONCEBLOCK*BLOCKSCALE);
 					if(readlen >0){
 						QOutEnvFSModel::pFunc->WriteFile((long long )th,tmpdata,readlen,&tRetLen,NULL);
+					}
+					
+					m_alreadyCopyedSize += readlen;
+					if(emitcount++%20==0){
+						emit ProcCountSize(m_alreadyCopyedCount,m_alreadyCopyedSize);
 					}
 				}while(readlen > 0 && tRetLen == readlen);
 				QOutEnvFSModel::pFunc->CloseHandle((long long)th);
@@ -247,7 +278,7 @@ int BgWorkThread::CopyFilesToOuter(QList<QPair<QString,QString>> & copyitems)
 
 			}while(0);
 			m_alreadyCopyedCount++;
-			emit calcItemCount(m_alreadyCopyedCount,m_currentTotalCount);
+			
 		}
 	}
 	emit copyDone();
@@ -257,6 +288,7 @@ int BgWorkThread::CopyFilesToOuter(QList<QPair<QString,QString>> & copyitems)
 int BgWorkThread::CopyFilesToInner(QList<QString> selOutPaths,QString intargetdir)
 {
 	m_alreadyCopyedCount = 0;
+	m_alreadyCopyedSize = 0;
 	QList<QString>::Iterator iter = m_selPaths.begin();
 	for(;iter!=m_selPaths.end() && !m_bIsQuit;iter++){
 		char outdirname[MAX_PATH];
@@ -296,19 +328,23 @@ BgWorkThread::~BgWorkThread()
 
 }
 
-int BgWorkThread::getInSubItemCount(QString rootdir,QString curdir,QList<QPair<QString,QString>> &subitems)
+qlonglong BgWorkThread::getInSubItemCount(QString rootdir,QString curdir,QList<QPair<QString,QString>> &subitems)
 {
 	QDir dir(curdir);
 	subitems.append(QPair<QString,QString>(curdir,rootdir));
     dir.setFilter(QDir::Dirs|QDir::Files);
+	qlonglong curitemssize = 0;
     foreach(QFileInfo fullDir, dir.entryInfoList())
     {
         if(fullDir.fileName() == "." || fullDir.fileName() == "..") continue;
         subitems.append(QPair<QString,QString>(fullDir.absoluteFilePath(),rootdir));
-        getInSubItemCount(rootdir,fullDir.absoluteFilePath(), subitems);
+		if(fullDir.isDir())
+			curitemssize += getInSubItemCount(rootdir,fullDir.absoluteFilePath(), subitems);
+		else
+			curitemssize += fullDir.size();
     }
 
-    return subitems.count();
+    return curitemssize;
 }
 
 DWORD BgWorkThread::getOutSubItemCount(const char * abspath)
@@ -359,7 +395,7 @@ DWORD BgWorkThread::getOutSubItemCount(const char * abspath)
 				sprintf(subAbsPath,"%s/%s",abspath,fd.cFileName);
 				totalcount += getOutSubItemCount(subAbsPath);
 				totalcount ++;
-				emit updateSize(totalcount);
+				//emit updateSize(totalcount);
 				isFinished = (QOutEnvFSModel::pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
 			}  
           
@@ -374,9 +410,9 @@ DWORD BgWorkThread::getOutSubItemCount(const char * abspath)
 }
 
 
-DWORD BgWorkThread::getFileDirSize(const char * abspath)
+qlonglong BgWorkThread::getFileDirSize(const char * abspath)
 {
-	DWORD totalsize = 0;
+	qlonglong totalsize = 0;
 	WIN32_FILE_ATTRIBUTE_DATA wfad;
 	if(strlen(abspath)>=MAX_PATH)
 		return 0;
@@ -421,7 +457,8 @@ DWORD BgWorkThread::getFileDirSize(const char * abspath)
 				char subAbsPath[MAX_PATH];
 				sprintf(subAbsPath,"%s/%s",abspath,fd.cFileName);
 				totalsize += getFileDirSize(subAbsPath);
-				emit updateSize(totalsize);
+				//emit updateSize(totalsize);
+				
 				isFinished = (QOutEnvFSModel::pFunc->FindNextFile(hFindFile, &fd) == FALSE);  
 			}  
           

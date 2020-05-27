@@ -89,18 +89,23 @@ public:
 		m_innertarget = targetdir;
 	}
 	
-	DWORD getFileDirSize(const char * abspath);
+	qlonglong getFileDirSize(const char * abspath);
 	DWORD getOutSubItemCount(const char * abspath);
-	int getInSubItemCount(QString rootdir,QString curdir,QList<QPair<QString,QString>> &subitems);
+	qlonglong getInSubItemCount(QString rootdir,QString curdir,QList<QPair<QString,QString>> &subitems);
 	int CopyFilesToInner(QList<QString> selOutPaths,QString intargetdir);
 	int CopyFilesToOuter(QList<QPair<QString,QString>> & copyitems);
 	void setWorkMode(BGWORKMODE mode){
 		m_bgworkmode = mode;
 	}
+	void setBgWorkNextMode(BGWORKMODE mode){
+		m_bgworknextmode = mode;
+	}
 signals:
-	void calcSizeRes(unsigned int);
-	void calcItemCount(int,int);
-	void updateSize(unsigned int);
+	//void calcSizeRes(unsigned int);
+	//void calcItemCount(int,int);
+	//void updateSize(unsigned int);
+	void UpdateTotalCountSize(int,qlonglong);
+	void ProcCountSize(int,qlonglong);
 	void copyDone();
 protected:
 	bool m_bIsQuit;
@@ -109,10 +114,14 @@ protected:
 
 private:
 	BGWORKMODE m_bgworkmode ;
+	BGWORKMODE m_bgworknextmode;
 	QString m_innertarget;
 	QString m_outtertarget;
 	int m_alreadyCopyedCount;
 	int m_currentTotalCount;
+	qlonglong m_currentTotalSize;
+	qlonglong m_alreadyCopyedSize;
+	QList<QPair<QString,QString>> selSources;
 	void CopyFileToInner(const char * outdir,const char * filename,const char * indir,const char * outrootdir);
 	void CopyDirToInner(const char * outdir,const char * outdirname,const char * indir,const char * outrootdir);
 };

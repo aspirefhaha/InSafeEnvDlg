@@ -2,19 +2,20 @@
 #include "insaveenvdlg.h"
 
 InSaveEnvDlg::InSaveEnvDlg(QWidget *parent, Qt::WFlags flags)
-	: QDialog(parent, flags),OutModel(this)
+	: QDialog(parent, flags),OutModel(this),dia(this)
 {
 	ui.setupUi(this);
 	m_pBgWorkThread = new BgWorkThread(this);
-	connect(m_pBgWorkThread,SIGNAL(calcSizeRes(unsigned int)),this,SLOT(showCalcSize(unsigned int)));
-	connect(m_pBgWorkThread,SIGNAL(updateSize(unsigned int)),this,SLOT(updateMsg(unsigned int)));
-	connect(m_pBgWorkThread,SIGNAL(calcItemCount(int,int)),this,SLOT(updateItemCount(int,int)));
+	connect(m_pBgWorkThread,SIGNAL(UpdateTotalCountSize(int,qlonglong)),this,SLOT( showCountSize(int,qlonglong)));
+	connect(m_pBgWorkThread,SIGNAL(ProcCountSize(int,qlonglong)),this,SLOT(showProcedCountSize(int,qlonglong)));
+	//connect(m_pBgWorkThread,SIGNAL(updateSize(unsigned int)),this,SLOT(updateMsg(unsigned int)));
+	//connect(m_pBgWorkThread,SIGNAL(calcItemCount(int,int)),this,SLOT(updateItemCount(int,int)));
 	connect(m_pBgWorkThread,SIGNAL(copyDone()),this,SLOT(copyFinished()));
 	//OutModel.setRootPath("");
 
 	//ui.tv_OutEnv->setRootIndex(OutModel.index("C:\\hadoop-2.7.7"));
-	m_tpDlg = new FProgWaitDlg(NULL,FDT_WAIT);
-	m_tpDlg->setModal(true);
+	//m_tpDlg = new FProgWaitDlg(NULL,FDT_WAIT);
+	//m_tpDlg->setModal(true);
 	
 #if 1
 	//OutModel.addRootDevice("C:\\hadoop-2.7.7",OUTFTDIR);
@@ -59,6 +60,10 @@ InSaveEnvDlg::InSaveEnvDlg(QWidget *parent, Qt::WFlags flags)
     ui.tv_InEnv->setIndentation(20);
     ui.tv_InEnv->setSortingEnabled(true);
 	//ui.tv_InEnv->setUniformRowHeights(true);
+	dia.setModal(true);
+	dia.setWindowTitle(tr("Progress"));
+	dia.setLabelText(tr("Copying..."));
+	
 }
 
 InSaveEnvDlg::~InSaveEnvDlg()
@@ -68,26 +73,43 @@ InSaveEnvDlg::~InSaveEnvDlg()
 
 void InSaveEnvDlg::copyFinished()
 {
-	m_tpDlg->close();
+	//m_tpDlg->close();
+	dia.close();
 }
 
 void InSaveEnvDlg::updateItemCount(int idx,int totalcount)
 {
-	m_tpDlg->setCountIndex(idx,totalcount);
-	m_selTotalCount = totalcount;
+	//m_tpDlg->setCountIndex(idx,totalcount);
+	//m_selTotalCount = totalcount;
 	//ui.lb_OutSelected->setText(calcShowSize(totalsize));
 }
 
-void InSaveEnvDlg::showCalcSize(unsigned int totalsize)
+void InSaveEnvDlg::showProcedCountSize(int procCount,qlonglong procSize)
 {
-	m_tpDlg->close();
-	m_selOutTotalSize = totalsize;
-	ui.lb_OutSelected->setText(calcShowSize(totalsize));
+	QString showSize = tr("Item %1/%2 Size %3/%4").arg(procCount).arg(m_selTotalCount).arg(calcShowSize(procSize/QOutEnvFSModel::ONCEBLOCK)).arg(calcShowSize(m_selOutTotalSize)); 
+	dia.setValue(procSize/QOutEnvFSModel::ONCEBLOCK);
+	dia.setLabelText(showSize);
+	
+	
+}
+
+void InSaveEnvDlg:: showCountSize(int totalCount,qlonglong totalSize)
+{
+	//m_tpDlg->close();
+	//dia.close();
+	QString showSize = tr("Item %1/%2 Size %3/%4").arg(0).arg(totalCount).arg(0).arg(calcShowSize(totalSize)); 
+	dia.setMaximum(totalSize);
+	dia.setLabelText(showSize);
+	m_selOutTotalSize = totalSize;
+	m_selTotalCount = totalCount;
+	ui.lb_OutSelected->setText(calcShowSize(totalSize));
+	//m_pBgWorkThread->setWorkMode(WMCOPYTOINNER);
+	m_pBgWorkThread->start();
 }
 
 void InSaveEnvDlg::updateMsg(unsigned int size)
 {
-	m_tpDlg->updateText(calcShowSize(size));
+	//m_tpDlg->updateText(calcShowSize(size));
 }
 
 QString InSaveEnvDlg::calcShowSize(DWORD showsize)
@@ -189,11 +211,18 @@ void InSaveEnvDlg::CopyToInEnv()
 		//TODO
 		//InEnvCopyFileFromOutEnv(pPriv->absPath,tarDir);
 	}
+	m_pBgWorkThread->setBgWorkNextMode(WMCOPYTOINNER);
+	m_pBgWorkThread->setWorkMode(WMCALCSIZE);
 	m_pBgWorkThread->setSelPath(selOutPaths);
 	m_pBgWorkThread->setInnerTargetDir(tarDir);
-	m_pBgWorkThread->setWorkMode(WMCOPYTOINNER);
 	m_pBgWorkThread->start();
-	m_tpDlg->exec();
+	dia.setLabelText(tr("Calculating..."));
+	dia.exec();
+	//m_pBgWorkThread->setSelPath(selOutPaths);
+	//m_pBgWorkThread->setWorkMode(WMCOPYTOINNER);
+	//m_pBgWorkThread->start();
+	//m_tpDlg->exec();
+	//dia.exec();
 }
 
 void InSaveEnvDlg::CopyToOutEnv()
@@ -231,9 +260,11 @@ void InSaveEnvDlg::CopyToOutEnv()
 	}
 	m_pBgWorkThread->setSelPath(selInPaths);
 	m_pBgWorkThread->setOutTargetDir(tarDir);
-	m_pBgWorkThread->setWorkMode(WMCOPYTOOUTER);
+	m_pBgWorkThread->setWorkMode(WMCALCSIZE);
+	m_pBgWorkThread->setBgWorkNextMode(WMCOPYTOOUTER);
 	m_pBgWorkThread->start();
-	m_tpDlg->exec();
+	//m_tpDlg->exec();
+	dia.exec();
 }
 
 
