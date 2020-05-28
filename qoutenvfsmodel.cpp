@@ -239,7 +239,7 @@ int BgWorkThread::CopyFilesToOuter(QList<QPair<QString,QString>> & copyitems)
 		strcpy(tmpdirname,copyitem.second.toLocal8Bit().data());
 		int rootlen = strlen(tmpdirname);
 		strcpy(tmpdirname,copyitem.first.toLocal8Bit().data());
-		char * pdirname = tmpdirname + rootlen+1;
+		char * pdirname = tmpdirname + rootlen;
 		sprintf_s(outpath,MAX_PATH,"%s/%s",m_outtertarget.toStdString().c_str(),pdirname);
 		if(fileinfo.isDir()){
 			BOOL tExist = QOutEnvFSModel::pFunc->PathFileExists(outpath);
