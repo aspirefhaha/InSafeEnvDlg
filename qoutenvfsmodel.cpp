@@ -926,6 +926,7 @@ void QOutEnvFSModel::refreshRootDevice()
 				switch(DvType){
 				case DRIVE_FIXED:
 				case DRIVE_NO_ROOT_DIR:
+				case DRIVE_REMOVABLE:
 					{
 						QString tmpDvName = (char *)tmpDv;
 						addRootDevice(tmpDvName,OUTFTDRIVE);

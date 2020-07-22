@@ -3,7 +3,7 @@
 ######################################################################
 
 TEMPLATE = app
-TARGET = 
+TARGET =
 QMAKE_LFLAGS *= /MACHINE:X64
 DEFINES += "_MBCS"
 DEPENDPATH += . GeneratedFiles
