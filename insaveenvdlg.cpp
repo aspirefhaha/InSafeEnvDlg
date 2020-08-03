@@ -75,6 +75,35 @@ void InSaveEnvDlg::copyFinished()
 {
 	//m_tpDlg->close();
 	dia.close();
+	//emit InModel.modelReset();
+	//ui.tv_InEnv->reset();
+	QModelIndexList selected = ui.tv_InEnv->selectionModel()->selectedRows(0);
+	if(selected.size() >1 || selected.size() <=0){
+		return;
+	}
+	QModelIndex temp = selected.first();
+	QString tarDir = InModel.filePath(temp);
+	if(!InModel.isDir(temp)){
+		
+		return;
+	}
+	
+	QDateTime current_date_time =QDateTime::currentDateTime();
+	QString current_date =current_date_time.toString("yyyyMMddhhmmsszzzddd");
+	QString filepath = QString("%1/%2.tmp").arg(tarDir).arg(current_date);
+	QFile file(filepath);
+	 if(file.exists())
+    {
+        //qDebug()<<"文件存在";
+    }else{
+
+       //qDebug()<<"文件不存在,正在新建文件.";
+        file.open( QIODevice::ReadWrite | QIODevice::Text );
+		file.flush();
+        file.close();
+		QFile filed(filepath);
+		filed.remove();
+    }
 }
 
 void InSaveEnvDlg::updateItemCount(int idx,int totalcount)

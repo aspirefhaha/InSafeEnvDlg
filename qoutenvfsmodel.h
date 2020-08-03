@@ -49,7 +49,8 @@ public:
 	void addRootDevice(QString,OUTFSTYPE);
 
 	OutEnvFSPrivate * findOutFSChild (QString abspath,OUTFSTYPE type)const;
-
+	
+	static QString calcShowSize(qlonglong showsize);
 	void refreshRootDevice();
 	const static int ONCEBLOCK = 512;
 	

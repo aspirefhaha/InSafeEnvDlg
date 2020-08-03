@@ -150,7 +150,9 @@
   <ItemGroup>
     <ClCompile Include="FProgWaitDlg.cpp" />
     <ClCompile Include="GeneratedFiles\Debug\moc_FProgWaitDlg.cpp" />
-    <ClCompile Include="GeneratedFiles\Debug\moc_insaveenvdlg.cpp" />
+    <ClCompile Include="GeneratedFiles\Debug\moc_insaveenvdlg.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="GeneratedFiles\Debug\moc_qoutenvfsmodel.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
@@ -166,8 +168,12 @@
       </PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="GeneratedFiles\Release\moc_FProgWaitDlg.cpp" />
-    <ClCompile Include="GeneratedFiles\Release\moc_insaveenvdlg.cpp" />
-    <ClCompile Include="GeneratedFiles\Release\moc_qoutenvfsmodel.cpp" />
+    <ClCompile Include="GeneratedFiles\Release\moc_insaveenvdlg.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="GeneratedFiles\Release\moc_qoutenvfsmodel.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="insaveenvdlg.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="qoutenvfsmodel.cpp" />

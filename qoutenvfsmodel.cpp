@@ -661,6 +661,22 @@ QVariant QOutEnvFSModel::headerData(int section, Qt::Orientation orientation, in
     }
     return returnValue;
 }
+
+
+
+QString QOutEnvFSModel::calcShowSize(qlonglong showsize)
+{
+	long long actSize = showsize;
+	//actSize *= QOutEnvFSModel::ONCEBLOCK;
+	if(actSize >= 1024*1024 * 1024 *0.99)
+		return QString::number(actSize/1024.0/1024/1024) + "GB";
+	else if(actSize >= 1024*1024*0.7)
+		return QString::number(actSize/1024.0/1024 ) + "MB";
+	else if(actSize >= 1024*0.99)
+		return QString::number(actSize/1024.0 ) + "kB";
+	return QString::number(actSize ) + "B";
+}
+
 QVariant QOutEnvFSModel::data(const QModelIndex & index,
                                     int role ) const
 {
@@ -717,7 +733,7 @@ QVariant QOutEnvFSModel::data(const QModelIndex & index,
 				//获取fspath文件的文件名、大小、类型、最后修改时间
 #if 1
 				QString filename ;
-				QString filesize ;
+				qlonglong filesize ;
 				QString filetype ;
 				QString filelastmodifytime ;
 				//InEnvGetOutFileInfo(fspath,filename,filesize,filetype,filelastmodifytime);
@@ -769,7 +785,7 @@ QVariant QOutEnvFSModel::data(const QModelIndex & index,
 						//}
 
 					}
-					filesize = QString::number(wfad.nFileSizeHigh * 2ll^32  + wfad.nFileSizeLow);
+					filesize = ((qlonglong)wfad.nFileSizeHigh) * (1ll << 32)  + wfad.nFileSizeLow;
 					SYSTEMTIME sysTime;
 					FileTimeToSystemTime(&wfad.ftLastWriteTime,&sysTime);
 					filelastmodifytime = QString("%1-%2-%3 %4::%5::%6").arg(sysTime.wYear,4,10,QLatin1Char('0'))
@@ -798,8 +814,10 @@ QVariant QOutEnvFSModel::data(const QModelIndex & index,
 				case 0:
 					return QVariant(filename);
 					break;
-				case 1:
-					return QVariant(filesize);
+				case 1:{
+						QString showSize = calcShowSize(filesize);
+						return QVariant(showSize);
+					}
 					break;
 				case 2:
 					return QVariant(filetype);
@@ -817,7 +835,7 @@ QVariant QOutEnvFSModel::data(const QModelIndex & index,
 			{
 #if 1
 				QString filename ;
-				QString filesize ;
+				qlonglong filesize ;
 				QString filetype = "Drive";
 				QString filelastmodifytime ="";
 				//InEnvGetOutDriveInfo(fspath,filename,filesize,filetype,filelastmodifytime);
@@ -840,11 +858,11 @@ QVariant QOutEnvFSModel::data(const QModelIndex & index,
 					(PULARGE_INTEGER)&qwTotalBytes,
 					(PULARGE_INTEGER)&qwFreeBytes);
 				if(bResult)
-					filesize = QString::number(qwFreeBytesToCaller);
+					filesize = qwFreeBytesToCaller;
 					//printf("空闲空间（字节）: \t\t%I64d\n", qwFreeBytes);
 					//printf("磁盘总容量（字节）: \t\t%I64d\n", qwTotalBytes);
 				else
-					filesize = "0";
+					filesize = 0;
 #else
 				QFileInfo info(fspath);
 				QString filename = info.absoluteFilePath();
@@ -857,7 +875,7 @@ QVariant QOutEnvFSModel::data(const QModelIndex & index,
 					return QVariant(filename);
 					break;
 				case 1:
-					return QVariant(filesize);
+					return QVariant(calcShowSize(filesize));
 					break;
 				case 2:
 					return QVariant(filetype);
